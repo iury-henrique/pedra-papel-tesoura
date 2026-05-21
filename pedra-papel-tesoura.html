@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pedra · Papel · Tesoura</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c26;
+    --accent: #c8f000;
+    --accent2: #ff4d6d;
+    --accent3: #00e5ff;
+    --text: #f0f0f0;
+    --muted: #666680;
+    --border: rgba(200,240,0,0.15);
+    --font-display: 'Bebas Neue', sans-serif;
+    --font-mono: 'Space Mono', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(200,240,0,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(200,240,0,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page { position: relative; z-index: 1; width: 100%; max-width: 960px; padding: 2rem 1.5rem 4rem; }
+
+  /* Header */
+  header { text-align: center; margin-bottom: 3rem; }
+  .logo { font-family: var(--font-display); font-size: clamp(3rem, 10vw, 7rem); letter-spacing: 4px; line-height: 1; }
+  .logo span:nth-child(1) { color: var(--accent); }
+  .logo span:nth-child(2) { color: var(--text); }
+  .logo span:nth-child(3) { color: var(--accent2); }
+  .subtitle { font-size: 11px; color: var(--muted); letter-spacing: 4px; text-transform: uppercase; margin-top: 0.5rem; }
+
+  /* Scoreboard */
+  .scoreboard {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0;
+    margin-bottom: 2rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .score-block {
+    padding: 1.2rem 1rem;
+    text-align: center;
+    background: var(--surface);
+  }
+  .score-block:nth-child(2) {
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .score-label { font-size: 10px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+  .score-num { font-family: var(--font-display); font-size: 3rem; line-height: 1; }
+  #score-player { color: var(--accent); }
+  #score-tie { color: var(--muted); font-size: 2rem; }
+  #score-cpu { color: var(--accent2); }
+
+  /* Arena */
+  .arena {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .arena-side {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .arena-side-label {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    align-self: flex-start;
+  }
+
+  /* Webcam */
+  #webcam-container {
+    width: 100%;
+    aspect-ratio: 1;
+    max-width: 320px;
+    border-radius: 2px;
+    overflow: hidden;
+    background: #000;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #webcam-container canvas,
+  #webcam-container video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover;
+    display: block;
+    border-radius: 2px;
+    transform: scaleX(-1);
+  }
+  .cam-overlay {
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--accent);
+    border-radius: 2px;
+    pointer-events: none;
+    opacity: 0.4;
+  }
+  .cam-corner {
+    position: absolute;
+    width: 16px; height: 16px;
+    border-color: var(--accent);
+    border-style: solid;
+    opacity: 1;
+  }
+  .cam-corner.tl { top: 6px; left: 6px; border-width: 2px 0 0 2px; }
+  .cam-corner.tr { top: 6px; right: 6px; border-width: 2px 2px 0 0; }
+  .cam-corner.bl { bottom: 6px; left: 6px; border-width: 0 0 2px 2px; }
+  .cam-corner.br { bottom: 6px; right: 6px; border-width: 0 2px 2px 0; }
+
+  .loading-cam {
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+    padding: 2rem;
+    line-height: 2;
+  }
+
+  /* CPU side */
+  .cpu-display {
+    width: 100%;
+    aspect-ratio: 1;
+    max-width: 320px;
+    background: var(--surface2);
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 6rem;
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    position: relative;
+    overflow: hidden;
+  }
+  .cpu-display::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(255,77,109,0.1) 0%, transparent 70%);
+  }
+  .cpu-display.shake {
+    animation: shake 0.4s ease;
+  }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    20% { transform: translateX(-8px) rotate(-3deg); }
+    40% { transform: translateX(8px) rotate(3deg); }
+    60% { transform: translateX(-4px) rotate(-1deg); }
+    80% { transform: translateX(4px) rotate(1deg); }
+  }
+
+  /* Prediction info */
+  .pred-info {
+    width: 100%;
+    text-align: center;
+  }
+  .pred-name {
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    letter-spacing: 2px;
+    color: var(--accent);
+    min-height: 2rem;
+    transition: color 0.2s;
+  }
+  .confidence-bar-wrap {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .conf-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .conf-label { width: 52px; text-align: right; }
+  .conf-track {
+    flex: 1;
+    height: 4px;
+    background: var(--surface2);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .conf-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.15s linear;
+  }
+  .conf-pct { width: 32px; }
+
+  /* CPU label */
+  .cpu-label {
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    letter-spacing: 2px;
+    color: var(--accent2);
+    min-height: 2rem;
+  }
+
+  /* Result */
+  .result-area {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1.5rem;
+    text-align: center;
+    margin-bottom: 1.5rem;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: border-color 0.3s;
+  }
+  .result-area.win { border-color: var(--accent); }
+  .result-area.lose { border-color: var(--accent2); }
+  .result-area.tie { border-color: var(--muted); }
+
+  .result-text {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 6vw, 3.5rem);
+    letter-spacing: 4px;
+    transition: color 0.3s;
+  }
+  .win .result-text { color: var(--accent); }
+  .lose .result-text { color: var(--accent2); }
+  .tie .result-text { color: var(--muted); }
+  .result-sub { font-size: 11px; color: var(--muted); letter-spacing: 2px; }
+
+  /* Countdown */
+  .countdown {
+    font-family: var(--font-display);
+    font-size: 5rem;
+    color: var(--accent3);
+    letter-spacing: 8px;
+    animation: pulse 0.5s ease;
+    min-height: 6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  @keyframes pulse {
+    0% { transform: scale(1.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* Status bar */
+  #status-bar {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 2px;
+    margin-bottom: 1.5rem;
+    min-height: 18px;
+  }
+
+  /* Controls */
+  .controls { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+  .btn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    padding: 14px 32px;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background 0.15s, color 0.15s, transform 0.1s;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.2s ease;
+    z-index: 0;
+  }
+  .btn:hover::before { transform: scaleX(1); }
+  .btn:hover { color: var(--bg); }
+  .btn span { position: relative; z-index: 1; }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn:disabled::before { display: none; }
+
+  .btn-reset {
+    border-color: var(--muted);
+    color: var(--muted);
+    padding: 14px 20px;
+  }
+  .btn-reset::before { background: var(--muted); }
+  .btn-reset:hover { color: var(--bg); }
+
+  /* Mode indicator */
+  .mode-pill {
+    display: inline-block;
+    font-size: 9px;
+    letter-spacing: 3px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+  .mode-pill.active { border-color: var(--accent); color: var(--accent); }
+
+  /* Auto mode indicator */
+  #auto-badge {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--accent3);
+    text-transform: uppercase;
+    text-align: center;
+    margin-top: 0.5rem;
+    display: none;
+  }
+
+  /* Flashing */
+  @keyframes flash {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .flashing { animation: flash 0.6s infinite; }
+
+  footer {
+    margin-top: 3rem;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-align: center;
+    opacity: 0.5;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="logo">
+      <span>✊</span><span> · </span><span>✌</span>
+    </div>
+    <div style="font-family: var(--font-display); font-size: clamp(1.5rem,5vw,3rem); letter-spacing:6px; margin-top:0.25rem;">PEDRA · PAPEL · TESOURA</div>
+    <div class="subtitle">powered by teachable machine · ia vs humano</div>
+  </header>
+
+  <div id="status-bar">inicializando modelo...</div>
+
+  <!-- Scoreboard -->
+  <div class="scoreboard">
+    <div class="score-block">
+      <div class="score-label">Você</div>
+      <div class="score-num" id="score-player">0</div>
+    </div>
+    <div class="score-block">
+      <div class="score-label">Empates</div>
+      <div class="score-num" id="score-tie">0</div>
+    </div>
+    <div class="score-block">
+      <div class="score-label">Computador</div>
+      <div class="score-num" id="score-cpu">0</div>
+    </div>
+  </div>
+
+  <!-- Result -->
+  <div class="result-area" id="result-area">
+    <div class="result-text" id="result-text">PRONTO?</div>
+    <div class="result-sub" id="result-sub">Aguardando início do jogo</div>
+  </div>
+
+  <!-- Arena -->
+  <div class="arena">
+    <!-- Player -->
+    <div class="arena-side">
+      <div class="arena-side-label">📷 Você</div>
+      <div id="webcam-container">
+        <div class="loading-cam" id="loading-cam">⟳ Carregando<br>câmera...</div>
+        <div class="cam-overlay" id="cam-overlay" style="display:none"></div>
+        <div class="cam-corner tl" id="cc-tl" style="display:none"></div>
+        <div class="cam-corner tr" id="cc-tr" style="display:none"></div>
+        <div class="cam-corner bl" id="cc-bl" style="display:none"></div>
+        <div class="cam-corner br" id="cc-br" style="display:none"></div>
+      </div>
+      <div class="pred-info">
+        <div class="pred-name" id="pred-name">—</div>
+        <div class="confidence-bar-wrap">
+          <div class="conf-row">
+            <span class="conf-label">Pedra</span>
+            <div class="conf-track"><div class="conf-fill" id="bar-0" style="width:0%;background:#c8f000"></div></div>
+            <span class="conf-pct" id="pct-0">0%</span>
+          </div>
+          <div class="conf-row">
+            <span class="conf-label">Papel</span>
+            <div class="conf-track"><div class="conf-fill" id="bar-1" style="width:0%;background:#00e5ff"></div></div>
+            <span class="conf-pct" id="pct-1">0%</span>
+          </div>
+          <div class="conf-row">
+            <span class="conf-label">Tesoura</span>
+            <div class="conf-track"><div class="conf-fill" id="bar-2" style="width:0%;background:#ff4d6d"></div></div>
+            <span class="conf-pct" id="pct-2">0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CPU -->
+    <div class="arena-side">
+      <div class="arena-side-label">🤖 Computador</div>
+      <div class="cpu-display" id="cpu-display">🤖</div>
+      <div class="cpu-label" id="cpu-label">—</div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div id="auto-badge">● modo automático ativo — detectando sua jogada</div>
+
+  <div class="controls">
+    <button class="btn" id="btn-start" disabled><span>▶ Iniciar Jogo</span></button>
+    <button class="btn" id="btn-play" disabled><span>⚡ Jogar Agora</span></button>
+    <button class="btn btn-reset" id="btn-reset"><span>↺ Reset</span></button>
+  </div>
+
+  <footer>modelo: teachablemachine.withgoogle.com/models/qUOQiNL_n/</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+<script>
+const MODEL_URL = "https://teachablemachine.withgoogle.com/models/qUOQiNL_n/";
+
+const EMOJIS = { "pedra":"✊","papel":"🖐️","tesoura":"✌️","rock":"✊","paper":"🖐️","scissors":"✌️","none":"—","nenhum":"—" };
+const CPU_CHOICES = ["pedra","papel","tesoura"];
+
+function normalize(name) {
+  const n = name.toLowerCase().trim();
+  if (n.includes("pedra") || n.includes("rock")) return "pedra";
+  if (n.includes("papel") || n.includes("paper")) return "papel";
+  if (n.includes("tesoura") || n.includes("scissors")) return "tesoura";
+  return n;
+}
+
+function beats(a, b) {
+  return (a==="pedra" && b==="tesoura") ||
+         (a==="papel" && b==="pedra") ||
+         (a==="tesoura" && b==="papel");
+}
+
+let model, webcam, classes;
+let scores = { player:0, tie:0, cpu:0 };
+let currentPred = null;
+let gameRunning = false;
+let autoMode = false;
+let autoInterval = null;
+let loopActive = false;
+
+const statusBar = document.getElementById("status-bar");
+const resultArea = document.getElementById("result-area");
+const resultText = document.getElementById("result-text");
+const resultSub = document.getElementById("result-sub");
+const predName = document.getElementById("pred-name");
+const cpuDisplay = document.getElementById("cpu-display");
+const cpuLabel = document.getElementById("cpu-label");
+const btnStart = document.getElementById("btn-start");
+const btnPlay = document.getElementById("btn-play");
+const btnReset = document.getElementById("btn-reset");
+const autoBadge = document.getElementById("auto-badge");
+const webcamContainer = document.getElementById("webcam-container");
+const loadingCam = document.getElementById("loading-cam");
+
+async function init() {
+  try {
+    statusBar.textContent = "carregando modelo de IA...";
+    model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
+    classes = model.getClassLabels ? model.getClassLabels() : [];
+    statusBar.textContent = "modelo carregado. iniciando câmera...";
+
+    webcam = new tmImage.Webcam(320, 320, true);
+    await webcam.setup({ facingMode: "user" });
+    await webcam.play();
+
+    loadingCam.style.display = "none";
+    webcamContainer.insertBefore(webcam.canvas, webcamContainer.firstChild);
+    webcam.canvas.style.transform = "scaleX(-1)";
+
+    document.getElementById("cam-overlay").style.display = "block";
+    ["cc-tl","cc-tr","cc-bl","cc-br"].forEach(id => document.getElementById(id).style.display = "block");
+
+    loopActive = true;
+    predLoop();
+
+    statusBar.textContent = "pronto! clique em iniciar jogo";
+    btnStart.disabled = false;
+
+  } catch(e) {
+    statusBar.textContent = "erro: " + e.message;
+    loadingCam.innerHTML = "❌ Câmera não<br>disponível";
+  }
+}
+
+async function predLoop() {
+  if (!loopActive) return;
+  webcam.update();
+  const preds = await model.predict(webcam.canvas);
+
+  let best = preds[0];
+  preds.forEach(p => { if (p.probability > best.probability) best = p; });
+  currentPred = normalize(best.className);
+
+  const displayName = best.className;
+  predName.textContent = (EMOJIS[currentPred] || "") + " " + displayName;
+  predName.style.color = currentPred === "pedra" ? "#c8f000" : currentPred === "papel" ? "#00e5ff" : currentPred === "tesoura" ? "#ff4d6d" : "#666680";
+
+  for (let i = 0; i < Math.min(preds.length, 3); i++) {
+    const pct = Math.round(preds[i].probability * 100);
+    const bar = document.getElementById("bar-" + i);
+    const pctEl = document.getElementById("pct-" + i);
+    if (bar) bar.style.width = pct + "%";
+    if (pctEl) pctEl.textContent = pct + "%";
+  }
+
+  requestAnimationFrame(predLoop);
+}
+
+let counting = false;
+async function playRound() {
+  if (counting || !currentPred) return;
+  counting = true;
+  btnPlay.disabled = true;
+
+  const ra = resultArea;
+  ra.className = "result-area";
+  resultText.textContent = "";
+  resultSub.textContent = "";
+
+  // Countdown 3 2 1
+  for (const num of ["3","2","1"]) {
+    resultText.className = "result-text countdown";
+    resultText.style.color = "#00e5ff";
+    resultText.style.fontSize = "5rem";
+    resultText.textContent = num;
+    resultSub.textContent = "prepare-se...";
+    await sleep(700);
+  }
+
+  resultText.textContent = "JÁ!";
+  resultText.style.color = "#c8f000";
+  await sleep(300);
+
+  // Capture player & cpu
+  const player = currentPred;
+  const cpuPick = CPU_CHOICES[Math.floor(Math.random() * 3)];
+
+  // CPU animation
+  cpuDisplay.classList.add("shake");
+  const cpuEmoji = EMOJIS[cpuPick] || "🤖";
+  cpuDisplay.textContent = cpuEmoji;
+  cpuLabel.textContent = cpuPick.charAt(0).toUpperCase() + cpuPick.slice(1);
+  setTimeout(() => cpuDisplay.classList.remove("shake"), 400);
+
+  await sleep(400);
+
+  // Determine result
+  let rText, rSub, rClass;
+  if (player === cpuPick) {
+    rText = "EMPATE!"; rSub = player + " vs " + cpuPick; rClass = "tie";
+    scores.tie++;
+  } else if (beats(player, cpuPick)) {
+    rText = "VOCÊ GANHOU!"; rSub = player + " bate " + cpuPick; rClass = "win";
+    scores.player++;
+  } else {
+    rText = "PERDEU!"; rSub = cpuPick + " bate " + player; rClass = "lose";
+    scores.cpu++;
+  }
+
+  resultText.className = "result-text";
+  resultText.style.fontSize = "";
+  resultText.style.color = "";
+  resultText.textContent = rText;
+  resultSub.textContent = rSub.toUpperCase();
+  ra.className = "result-area " + rClass;
+
+  document.getElementById("score-player").textContent = scores.player;
+  document.getElementById("score-tie").textContent = scores.tie;
+  document.getElementById("score-cpu").textContent = scores.cpu;
+
+  await sleep(1500);
+  counting = false;
+  if (!autoMode) btnPlay.disabled = false;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+btnStart.addEventListener("click", () => {
+  if (!gameRunning) {
+    gameRunning = true;
+    autoMode = true;
+    btnStart.innerHTML = "<span>⏹ Parar</span>";
+    btnPlay.disabled = true;
+    autoBadge.style.display = "block";
+    statusBar.textContent = "jogo automático ativo — mostrando sua jogada para a câmera";
+
+    autoInterval = setInterval(() => {
+      if (!counting) playRound();
+    }, 4000);
+    playRound();
+  } else {
+    gameRunning = false;
+    autoMode = false;
+    clearInterval(autoInterval);
+    btnStart.innerHTML = "<span>▶ Iniciar Jogo</span>";
+    btnPlay.disabled = false;
+    autoBadge.style.display = "none";
+    statusBar.textContent = "jogo pausado. clique em jogar ou iniciar novamente";
+  }
+});
+
+btnPlay.addEventListener("click", () => {
+  if (!counting) playRound();
+});
+
+btnReset.addEventListener("click", () => {
+  scores = { player:0, tie:0, cpu:0 };
+  document.getElementById("score-player").textContent = "0";
+  document.getElementById("score-tie").textContent = "0";
+  document.getElementById("score-cpu").textContent = "0";
+  resultArea.className = "result-area";
+  resultText.textContent = "PRONTO?";
+  resultText.style.fontSize = "";
+  resultText.style.color = "";
+  resultSub.textContent = "Placar resetado";
+  cpuDisplay.textContent = "🤖";
+  cpuLabel.textContent = "—";
+});
+
+init();
+</script>
+</body>
+</html>
